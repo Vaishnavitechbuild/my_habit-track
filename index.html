@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Habit Tracker Pro</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{font-family:Arial;text-align:center;background:#f4f6f8;}
+input,button{padding:8px;margin:5px;}
+button{background:teal;color:white;border:none;}
+table{margin:20px auto;border-collapse:collapse;width:95%;background:white;}
+th,td{border:1px solid #ccc;padding:8px;}
+th{background:teal;color:white;}
+.done{background:lightgreen;}
+.box{background:white;padding:15px;margin:15px;border-radius:10px;}
+.logout{background:red;}
+</style>
+</head>
+
+<body>
+
+<h1>🔥 Habit Tracker</h1>
+<div id="clock"></div>
+
+<div class="box">
+<h3>Register</h3>
+<input id="ruser" placeholder="Username">
+<input id="remail" placeholder="Email">
+<input id="rpass" placeholder="Password" type="password">
+<button onclick="register()">Register</button>
+</div>
+
+<div class="box">
+<h3>Login</h3>
+<input id="luser" placeholder="Username">
+<input id="lpass" placeholder="Password" type="password">
+<button onclick="login()">Login</button>
+</div>
+
+<div class="box">
+<h3>Forgot Password</h3>
+<input id="fuser" placeholder="Username">
+<input id="femail" placeholder="Email">
+<button onclick="forgot()">Verify</button>
+
+<input id="newpass" placeholder="New Password">
+<button onclick="changePassword()">Change Password</button>
+</div>
+
+<div id="app" style="display:none;">
+<button class="logout" onclick="logout()">Logout</button>
+
+<div class="box">
+<input id="habit" placeholder="Habit">
+<input type="time" id="start">
+<input type="time" id="end">
+<button onclick="addHabit()">Add</button>
+</div>
+
+<table>
+<thead>
+<tr>
+<th>Habit</th><th>Start</th><th>End</th>
+<th>Mon</th><th>Tue</th><th>Wed</th>
+<th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
+<th>Del</th>
+</tr>
+</thead>
+<tbody id="tb"></tbody>
+</table>
+
+<h2 id="progress"></h2>
+<canvas id="chart"></canvas>
+
+<div class="box">
+<h3>💬 Motivation</h3>
+<p id="quote"></p>
+<button onclick="newQuote()">Next</button>
+</div>
+
+<div class="box">
+<h3>🧠 Riddles</h3>
+<p id="riddle"></p>
+<input id="ans">
+<button onclick="check()">Submit</button>
+<button onclick="nextRiddle()">Next</button>
+<p id="result"></p>
+</div>
+
+</div>
+
+<script>
+let habits=[],currentUser="",chart;
+
+// CLOCK
+setInterval(()=>clock.innerText=new Date().toLocaleString(),1000);
+
+// REGISTER
+async function register(){
+let res=await fetch("http://localhost:5001/register",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:ruser.value,email:remail.value,password:rpass.value})
+});
+alert((await res.json()).message);
+}
+
+// LOGIN
+async function login(){
+let res=await fetch("http://localhost:5001/login",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:luser.value,password:lpass.value})
+});
+let data=await res.json();
+if(data.message==="Login success"){
+currentUser=data.username;
+app.style.display="block";
+load();
+}else alert("Invalid login");
+}
+
+// LOGOUT
+function logout(){
+currentUser="";
+habits=[];
+app.style.display="none";
+tb.innerHTML="";
+progress.innerText="";
+if(chart) chart.destroy();
+}
+
+// FORGOT PASSWORD
+async function forgot(){
+let res=await fetch("http://localhost:5001/forgot",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:fuser.value,email:femail.value})
+});
+alert((await res.json()).message);
+}
+
+// CHANGE PASSWORD
+async function changePassword(){
+let res=await fetch("http://localhost:5001/change-password",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username:fuser.value,newPassword:newpass.value})
+});
+alert((await res.json()).message);
+}
+
+// WEEK
+function week(){
+let t=new Date(),d=t.getDay();
+let m=new Date(t);m.setDate(t.getDate()-(d===0?6:d-1));
+let w=[];
+for(let i=0;i<7;i++){
+let x=new Date(m);x.setDate(m.getDate()+i);
+w.push(x.toISOString().split("T")[0]);
+}
+return w;
+}
+
+// LOAD
+async function load(){
+let r=await fetch(`http://localhost:5001/habits/${currentUser}`);
+habits=await r.json();
+render();
+}
+
+// ADD
+async function addHabit(){
+let h={name:habit.value,start:start.value,end:end.value,dates:{}};
+await fetch(`http://localhost:5001/habits/${currentUser}`,{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify(h)
+});
+load();
+}
+
+// TOGGLE
+async function toggle(i,d){
+habits[i].dates[d]=!habits[i].dates[d];
+await fetch(`http://localhost:5001/habits/${currentUser}/${i}`,{
+method:"PUT",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify(habits[i])
+});
+load();
+}
+
+// DELETE
+async function del(i){
+await fetch(`http://localhost:5001/habits/${currentUser}/${i}`,{method:"DELETE"});
+load();
+}
+
+// RENDER
+function render(){
+let w=week(),html="";
+habits.forEach((h,i)=>{
+html+="<tr>";
+html+=`<td>${h.name}</td><td>${h.start}</td><td>${h.end}</td>`;
+w.forEach(d=>{
+let done=h.dates[d];
+html+=`<td onclick="toggle(${i},'${d}')">${done?'YES':''}</td>`;
+});
+html+=`<td><button onclick="del(${i})">X</button></td></tr>`;
+});
+tb.innerHTML=html;
+progressCalc(w);
+drawChart(w);
+}
+
+// PROGRESS
+function progressCalc(w){
+let t=habits.length*7,d=0;
+habits.forEach(h=>w.forEach(x=>{if(h.dates[x])d++;}));
+progress.innerText="Progress: "+(t?Math.round(d/t*100):0)+"%";
+}
+
+// CHART
+function drawChart(w){
+let data=w.map(d=>{
+let c=0;habits.forEach(h=>{if(h.dates[d])c++;});return c;
+});
+if(chart)chart.destroy();
+chart=new Chart(document.getElementById("chart"),{
+type:'bar',
+data:{labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+datasets:[{data}]}
+});
+}
+
+// QUOTES
+let quotes=[
+"Dream transforms into action – APJ Abdul Kalam",
+"Arise awake – Vivekananda",
+"Do it today – Gandhi"
+];
+function newQuote(){
+quote.innerText=quotes[Math.floor(Math.random()*quotes.length)];
+}
+
+// RIDDLES
+let riddles=[
+{q:"2+3=?",a:"5"},
+{q:"6×2=?",a:"12"},
+{q:"9-4=?",a:"5"},
+{q:"8÷2=?",a:"4"},
+{q:"7+6=?",a:"13"}
+];
+let index=0,done=false;
+
+function loadRiddle(){
+if(index<riddles.length){
+riddle.innerText=riddles[index].q;
+done=false;
+}else{
+riddle.innerText="Focus on your goal 🔥";
+done=true;
+setTimeout(()=>{
+index=0;
+loadRiddle();
+},300000);
+}
+}
+
+function check(){
+if(done) return;
+result.innerText=(ans.value==riddles[index].a)?"Correct":"Try again";
+}
+
+function nextRiddle(){
+if(done) return;
+index++;
+ans.value="";
+result.innerText="";
+loadRiddle();
+}
+
+loadRiddle();
+newQuote();
+</script>
+
+</body>
+</html>
